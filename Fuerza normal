@@ -1,0 +1,119 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+
+-- Configuración
+local PET_NAME = "Swift Samurai"
+local ROCK_NAME = "Rock5M"
+local PROTEIN_EGG_NAME = "ProteinEgg"
+local SWIFT_SAMURAI_REP_SPEED = 2000
+local PROTEIN_EGG_INTERVAL = 30 * 60
+local DOUBLE_REP_MULTIPLIER = 2
+
+-- Variables
+local hasDoubleRepPass = true
+local lastProteinEggTime = 0
+local repsProcessed = 0
+
+-- Control global para toggle
+if _G.MuscleScriptEnabled == nil then
+    _G.MuscleScriptEnabled = false
+end
+
+if _G.MuscleScriptEnabled then
+    print("Muscle Script DESACTIVADO")
+    _G.MuscleScriptEnabled = false
+    return
+else
+    print("Muscle Script ACTIVADO")
+    _G.MuscleScriptEnabled = true
+end
+
+local function equipPet()
+    if LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild("Unique") then
+        for _, pet in pairs(LocalPlayer.petsFolder.Unique:GetChildren()) do
+            if pet.Name == PET_NAME then
+                ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
+                break
+            end
+        end
+    end
+end
+
+local function eatProteinEgg()
+    if LocalPlayer:FindFirstChild("Backpack") then
+        for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if item.Name == PROTEIN_EGG_NAME then
+                ReplicatedStorage.rEvents.eatEvent:FireServer("eat", item)
+                break
+            end
+        end
+    end
+end
+
+local function hitRock()
+    local rock = workspace:FindFirstChild(ROCK_NAME)
+    if rock and HumanoidRootPart then
+        if (HumanoidRootPart.Position - rock.Position).Magnitude > 10 then
+            HumanoidRootPart.CFrame = rock.CFrame * CFrame.new(0, 0, -5)
+        end
+        ReplicatedStorage.rEvents.hitEvent:FireServer("hit", rock)
+    end
+end
+
+local function doReps(repSpeed)
+    local startTime = tick()
+    repsProcessed = 0
+
+    for i = 1, repSpeed do
+        if not _G.MuscleScriptEnabled then break end
+        if LocalPlayer:FindFirstChild("muscleEvent") then
+            LocalPlayer.muscleEvent:FireServer("rep")
+            repsProcessed += 1
+        end
+        task.wait(0.02)
+    end
+
+    local duration = tick() - startTime
+    local repsPerSecond = math.floor(repsProcessed / duration)
+    warn("Reps enviados:", repsProcessed, " | Tiempo:", math.floor(duration), "s | Aprox. reps/seg:", repsPerSecond)
+end
+
+-- Actualizar referencias cuando reaparezca el personaje
+LocalPlayer.CharacterAdded:Connect(function(char)
+    Character = char
+    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
+end)
+
+-- Rutina principal en hilo aparte
+task.spawn(function()
+    equipPet()
+    lastProteinEggTime = tick()
+
+    while true do
+        if not _G.MuscleScriptEnabled then break end
+
+        local repSpeed = SWIFT_SAMURAI_REP_SPEED
+        if hasDoubleRepPass then
+            repSpeed = repSpeed * DOUBLE_REP_MULTIPLIER
+        end
+
+        doReps(repSpeed)
+
+        if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
+            eatProteinEgg()
+            lastProteinEggTime = tick()
+        end
+
+        if tick() % 5 < 1 then
+            hitRock()
+        end
+
+        task.wait(0.1)
+    end
+
+    print("Muscle Script detenido")
+end)
