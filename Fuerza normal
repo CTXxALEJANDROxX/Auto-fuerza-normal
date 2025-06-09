@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
@@ -10,39 +11,50 @@ local PET_NAME = "Swift Samurai"
 local ROCK_NAME = "Rock5M"
 local PROTEIN_EGG_NAME = "ProteinEgg"
 local SWIFT_SAMURAI_REP_SPEED = 2000
-local PROTEIN_EGG_INTERVAL = 30 * 60
 local DOUBLE_REP_MULTIPLIER = 2
+local PROTEIN_EGG_INTERVAL = 30 * 60
+
+-- Estado global
+getgenv()._AutoRepFarmEnabled = not getgenv()._AutoRepFarmEnabled
+if getgenv()._AutoRepFarmEnabled then
+    warn("[Auto Rep Farm] ACTIVADO")
+else
+    warn("[Auto Rep Farm] DESACTIVADO")
+    return
+end
 
 -- Variables
-local hasDoubleRepPass = true
+local hasSwiftSamurai = false
 local lastProteinEggTime = 0
-local repsProcessed = 0
+local hasDoubleRepPass = true
 
--- Control global para toggle
-if _G.MuscleScriptEnabled == nil then
-    _G.MuscleScriptEnabled = false
+-- Obtener ping desde Stats
+local function getCurrentPing()
+    local stats = LocalPlayer:FindFirstChild("NetworkStats")
+    if stats then
+        local ping = stats:FindFirstChild("DataPing")
+        if ping then
+            return tonumber(ping.Value) or 0
+        end
+    end
+    return 0
 end
 
-if _G.MuscleScriptEnabled then
-    print("Muscle Script DESACTIVADO")
-    _G.MuscleScriptEnabled = false
-    return
-else
-    print("Muscle Script ACTIVADO")
-    _G.MuscleScriptEnabled = true
-end
-
+-- Equipar pet
 local function equipPet()
+    hasSwiftSamurai = false
     if LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild("Unique") then
         for _, pet in pairs(LocalPlayer.petsFolder.Unique:GetChildren()) do
             if pet.Name == PET_NAME then
                 ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
+                hasSwiftSamurai = true
                 break
             end
         end
     end
 end
 
+-- Comer Protein Egg
 local function eatProteinEgg()
     if LocalPlayer:FindFirstChild("Backpack") then
         for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
@@ -54,51 +66,51 @@ local function eatProteinEgg()
     end
 end
 
+-- Golpear roca
 local function hitRock()
     local rock = workspace:FindFirstChild(ROCK_NAME)
     if rock and HumanoidRootPart then
-        if (HumanoidRootPart.Position - rock.Position).Magnitude > 10 then
-            HumanoidRootPart.CFrame = rock.CFrame * CFrame.new(0, 0, -5)
-        end
+        HumanoidRootPart.CFrame = rock.CFrame * CFrame.new(0, 0, -5)
         ReplicatedStorage.rEvents.hitEvent:FireServer("hit", rock)
     end
 end
 
-local function doReps(repSpeed)
-    local startTime = tick()
-    repsProcessed = 0
+-- 🧠 Reps adaptativas con control de ping
+local function doReps(targetReps)
+    local repsSent = 0
 
-    for i = 1, repSpeed do
-        if not _G.MuscleScriptEnabled then break end
-        if LocalPlayer:FindFirstChild("muscleEvent") then
-            LocalPlayer.muscleEvent:FireServer("rep")
-            repsProcessed += 1
+    while repsSent < targetReps and getgenv()._AutoRepFarmEnabled do
+        local ping = getCurrentPing()
+        local repsPerStep, delayBetweenSteps
+
+        if ping >= 500 then
+            repsPerStep = 5
+            delayBetweenSteps = 0.07
+            warn("[Auto Rep Farm] Ping alto ("..ping..") - bajando velocidad")
+        else
+            repsPerStep = 10
+            delayBetweenSteps = 0.025
         end
-        task.wait(0.02)
-    end
 
-    local duration = tick() - startTime
-    local repsPerSecond = math.floor(repsProcessed / duration)
-    warn("Reps enviados:", repsProcessed, " | Tiempo:", math.floor(duration), "s | Aprox. reps/seg:", repsPerSecond)
+        for _ = 1, repsPerStep do
+            if repsSent >= targetReps then break end
+            if LocalPlayer:FindFirstChild("muscleEvent") then
+                LocalPlayer.muscleEvent:FireServer("rep")
+                repsSent += 1
+            end
+        end
+        task.wait(delayBetweenSteps)
+    end
 end
 
--- Actualizar referencias cuando reaparezca el personaje
-LocalPlayer.CharacterAdded:Connect(function(char)
-    Character = char
-    HumanoidRootPart = char:WaitForChild("HumanoidRootPart")
-end)
-
--- Rutina principal en hilo aparte
+-- 🔁 Bucle principal
 task.spawn(function()
     equipPet()
-    lastProteinEggTime = tick()
 
-    while true do
-        if not _G.MuscleScriptEnabled then break end
-
+    while getgenv()._AutoRepFarmEnabled do
         local repSpeed = SWIFT_SAMURAI_REP_SPEED
         if hasDoubleRepPass then
-            repSpeed = repSpeed * DOUBLE_REP_MULTIPLIER
+            repSpeed *= DOUBLE_REP_MULTIPLIER
         end
 
         doReps(repSpeed)
@@ -114,6 +126,4 @@ task.spawn(function()
 
         task.wait(0.1)
     end
-
-    print("Muscle Script detenido")
 end)
