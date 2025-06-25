@@ -1,50 +1,38 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
-
--- Configuración
+-- Config
 local PET_NAME = "Swift Samurai"
 local ROCK_NAME = "Rock5M"
 local PROTEIN_EGG_NAME = "ProteinEgg"
-local SWIFT_SAMURAI_REP_SPEED = 2000
-local DOUBLE_REP_MULTIPLIER = 2
 local PROTEIN_EGG_INTERVAL = 30 * 60
+local REP_DELAY = 0.015 -- Delay entre cada rep individual (rápido sin disparar el ping)
+local ROCK_INTERVAL = 5
 
--- Estado global
 getgenv()._AutoRepFarmEnabled = not getgenv()._AutoRepFarmEnabled
-if getgenv()._AutoRepFarmEnabled then
-    warn("[Auto Rep Farm] ACTIVADO")
-else
+if not getgenv()._AutoRepFarmEnabled then
     warn("[Auto Rep Farm] DESACTIVADO")
     return
+else
+    warn("[Auto Rep Farm] ACTIVADO")
 end
 
--- Variables
+local HumanoidRootPart = nil
 local hasSwiftSamurai = false
 local lastProteinEggTime = 0
-local hasDoubleRepPass = true
+local lastRockTime = 0
 
--- Obtener ping desde Stats
-local function getCurrentPing()
-    local stats = LocalPlayer:FindFirstChild("NetworkStats")
-    if stats then
-        local ping = stats:FindFirstChild("DataPing")
-        if ping then
-            return tonumber(ping.Value) or 0
-        end
-    end
-    return 0
+local function updateCharacterRefs()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    HumanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
 end
 
--- Equipar pet
 local function equipPet()
     hasSwiftSamurai = false
-    if LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild("Unique") then
-        for _, pet in pairs(LocalPlayer.petsFolder.Unique:GetChildren()) do
+    local petsFolder = LocalPlayer:FindFirstChild("petsFolder")
+    if petsFolder and petsFolder:FindFirstChild("Unique") then
+        for _, pet in pairs(petsFolder.Unique:GetChildren()) do
             if pet.Name == PET_NAME then
                 ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
                 hasSwiftSamurai = true
@@ -54,7 +42,6 @@ local function equipPet()
     end
 end
 
--- Comer Protein Egg
 local function eatProteinEgg()
     if LocalPlayer:FindFirstChild("Backpack") then
         for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
@@ -66,7 +53,6 @@ local function eatProteinEgg()
     end
 end
 
--- Golpear roca
 local function hitRock()
     local rock = workspace:FindFirstChild(ROCK_NAME)
     if rock and HumanoidRootPart then
@@ -75,55 +61,31 @@ local function hitRock()
     end
 end
 
--- 🧠 Reps adaptativas con control de ping
-local function doReps(targetReps)
-    local repsSent = 0
-
-    while repsSent < targetReps and getgenv()._AutoRepFarmEnabled do
-        local ping = getCurrentPing()
-        local repsPerStep, delayBetweenSteps
-
-        if ping >= 500 then
-            repsPerStep = 5
-            delayBetweenSteps = 0.07
-            warn("[Auto Rep Farm] Ping alto ("..ping..") - bajando velocidad")
-        else
-            repsPerStep = 10
-            delayBetweenSteps = 0.025
-        end
-
-        for _ = 1, repsPerStep do
-            if repsSent >= targetReps then break end
-            if LocalPlayer:FindFirstChild("muscleEvent") then
-                LocalPlayer.muscleEvent:FireServer("rep")
-                repsSent += 1
-            end
-        end
-        task.wait(delayBetweenSteps)
-    end
-end
-
--- 🔁 Bucle principal
+-- Ejecutar reps continuas
 task.spawn(function()
+    updateCharacterRefs()
     equipPet()
+    lastProteinEggTime = tick()
 
     while getgenv()._AutoRepFarmEnabled do
-        local repSpeed = SWIFT_SAMURAI_REP_SPEED
-        if hasDoubleRepPass then
-            repSpeed *= DOUBLE_REP_MULTIPLIER
+        -- Siempre enviar una rep
+        if LocalPlayer:FindFirstChild("muscleEvent") then
+            LocalPlayer.muscleEvent:FireServer("rep")
         end
 
-        doReps(repSpeed)
-
+        -- Comer huevo si toca
         if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
             eatProteinEgg()
             lastProteinEggTime = tick()
         end
 
-        if tick() % 5 < 1 then
+        -- Golpear roca cada 5 segundos
+        if tick() - lastRockTime >= ROCK_INTERVAL then
             hitRock()
+            lastRockTime = tick()
         end
 
-        task.wait(0.1)
+        -- Delay pequeño entre reps (ajústalo si sube ping)
+        task.wait(REP_DELAY)
     end
 end)
