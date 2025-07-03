@@ -10,7 +10,7 @@ local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local PET_NAME = "Swift Samurai"
 local ROCK_NAME = "Rock5M"
 local PROTEIN_EGG_NAME = "Protein Egg"
-local SWIFT_SAMURAI_REP_SPEED = 2000
+local SWIFT_SAMURAI_REP_SPEED = 20000
 local DOUBLE_REP_MULTIPLIER = 2
 local PROTEIN_EGG_INTERVAL = 30 * 60
 
